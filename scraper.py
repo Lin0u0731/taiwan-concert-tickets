@@ -1,7 +1,7 @@
 import requests
-from bs4 import BeautifulSoup
 import json
 import datetime
+import xml.etree.ElementTree as ET # 🌟 召喚專門解析 RSS 的內建神器
 
 def get_region(text):
     text = text.upper()
@@ -15,23 +15,22 @@ def get_region(text):
         return "東部"
     return "全台/其他"
 
-# 🎸 新增情報源：Blow 吹音樂 (台灣最大獨立音樂情報站)
+# 🎸 修正版：Blow 吹音樂 RSS 爬蟲
 def fetch_blow_music():
-    print("正在從『Blow 吹音樂』抓取獨立音樂售票情報...")
-    url = "https://blow.streetvoice.com/feed/" # 這是他們公開的 RSS 通道
+    print("正在從『Blow 吹音樂』抓取...")
+    url = "https://blow.streetvoice.com/feed/"
     results = []
     try:
         resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
-        # 用 BeautifulSoup 解析 XML
-        soup = BeautifulSoup(resp.text, "html.parser")
         
-        # RSS 的每一篇文章都包在 <item> 裡面
-        for item in soup.find_all("item"):
-            title = item.title.text if item.title else ""
-            link = item.link.text if item.link else ""
+        # 🌟 使用正確的 XML 解析器，網址再也不會被吃掉了！
+        root = ET.fromstring(resp.content)
+        for item in root.findall('.//item'):
+            title = item.findtext('title') or ""
+            link = item.findtext('link') or ""
             
-            # 篩選關鍵字：確保這篇新聞是關於演出的
-            if any(k in title for k in ['專場', '音樂祭', '開唱', '巡演', '演唱會', '售票', '陣容', 'Live']):
+            # 放寬關鍵字，多抓一點情報
+            if any(k in title for k in ['專場', '音樂祭', '開唱', '巡演', '演唱會', '售票', '陣容', 'Live', '發片', '來台']):
                 results.append({
                     "title": title,
                     "location": "詳見情報內文",
@@ -44,7 +43,7 @@ def fetch_blow_music():
         print(f"Blow 吹音樂 抓取失敗: {e}")
     return results
 
-# 🏛️ 文化部資料 (加上嚴格過濾器，過濾掉純戲劇/藝術展演)
+# 🏛️ 修正版：文化部資料 (移除過度嚴格的過濾)
 def fetch_culture_api():
     print("正在抓取文化部開放資料...")
     url = "https://cloud.culture.tw/frontsite/trans/SearchShowAction.do?method=doFindTypeJ&category=5"
@@ -53,12 +52,9 @@ def fetch_culture_api():
         resp = requests.get(url, timeout=15)
         data = resp.json()
         
-        for item in data[:100]:
+        # 抓取前 40 筆資料讓網頁豐富起來
+        for item in data[:40]:
             title = item.get("title", "")
-            # 🌟 嚴格把關：只要標題看起來像樂團或音樂祭的！
-            if not any(k in title for k in ['演唱會', '音樂祭', 'Live', '專場', '巡迴']):
-                continue # 如果沒有這些關鍵字，就跳過不抓！
-                
             show_info = item.get("showInfo", [])
             if not show_info: continue
                 
@@ -76,7 +72,7 @@ def fetch_culture_api():
                 "ticket_date": f"演出時間：{time}",
                 "link": link,
                 "region": get_region(title + location),
-                "source": "政府公開資料"
+                "source": "政府公開資料 (OPENTIX 等)"
             })
     except Exception as e:
         print(f"文化部 API 失敗: {e}")
@@ -86,21 +82,22 @@ if __name__ == "__main__":
     now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     all_data = []
     
-    # 雙管齊下！
     all_data.extend(fetch_blow_music())
     all_data.extend(fetch_culture_api())
 
     for e in all_data:
         e["last_updated"] = now
         
+    # 🌟 升級防重複機制：用「標題+網址」來判斷，更準確！
     seen = set()
     unique_data = []
     for d in all_data:
-        if d['link'] not in seen:
+        identifier = d['title'] + d['link']
+        if identifier not in seen:
             unique_data.append(d)
-            seen.add(d['link'])
+            seen.add(identifier)
             
     with open("data.json", "w", encoding="utf-8") as f:
         json.dump(unique_data, f, ensure_ascii=False, indent=4)
         
-    print(f"任務完成！已為聽團仔更新 {len(unique_data)} 筆最純的音樂情報。")
+    print(f"任務完成！已成功抓取並更新 {len(unique_data)} 筆資料。")
