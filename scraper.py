@@ -20,17 +20,25 @@ def get_region(text):
         return "東部"
     return "全台/其他"
 
-# --- 第一道大門分支 A：KKTIX 官方 API ---
+# --- 第一道大門分支 A：KKTIX 官方 API (偽裝升級版) ---
 def fetch_kktix():
     print("正在從 KKTIX API 抓取全站資料...")
     url = "https://kktix.com/events.json"
+    
+    # 🌟 加上這段偽裝，假裝我們是一般的 Windows Chrome 瀏覽器
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "application/json"
+    }
+    
     results = []
     try:
-        resp = requests.get(url, timeout=10)
+        # 🌟 記得把 headers 放進請求裡面
+        resp = requests.get(url, headers=headers, timeout=10)
+        resp.raise_for_status() # 如果被擋住會明確報錯
         data = resp.json()
         for item in data.get('entry', []):
             title = item.get('title', '')
-            # 過濾關鍵字，確保跟音樂或演出有關
             if any(k in title for k in ['演唱會', '音樂', '祭', 'Live', '巡迴', 'Tour', '專場', 'DJ', '派對']):
                 results.append({
                     "title": title,
