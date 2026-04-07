@@ -4,133 +4,194 @@ import json
 import datetime
 import xml.etree.ElementTree as ET
 
+HEADERS = {
+    "User-Agent": "Mozilla/5.0"
+}
+
+# -------------------------
+# 地區分類
+# -------------------------
 def get_region(text):
-    text = text.upper()
-    # 稍微豐富一下地區的關鍵字庫
-    if any(k in text for k in ['台北', '新北', '桃園', '基隆', 'LEGACY TAIPEI', 'ZEPP', '北流', '小巨蛋', '河岸留言', 'THE WALL', 'NUZONE', '樂悠悠之口', '女巫店']):
+    text = (text or "").upper()
+
+    if any(k in text for k in ['台北','新北','桃園','基隆','LEGACY','ZEPP','北流','小巨蛋']):
         return "北部"
-    if any(k in text for k in ['台中', '彰化', '雲林', 'LEGACY TAICHUNG', '迴響', '圓滿戶外']):
+    if any(k in text for k in ['台中','彰化','雲林']):
         return "中部"
-    if any(k in text for k in ['高雄', '台南', '屏東', '嘉義', '駁二', '後台', '高流', '衛武營', 'LIVE WAREHOUSE']):
+    if any(k in text for k in ['高雄','台南','屏東','嘉義','高流','駁二']):
         return "南部"
-    if any(k in text for k in ['台東', '花蓮', '宜蘭', '鐵花村']):
+    if any(k in text for k in ['台東','花蓮','宜蘭']):
         return "東部"
+
     return "全台/其他"
 
-# 🎸 X光透視版：Blow 吹音樂情報萃取
-def fetch_blow_music():
-    print("正在從『Blow 吹音樂』抓取並透視內文...")
+
+# -------------------------
+# KKTIX（主來源）
+# -------------------------
+def fetch_kktix_json():
+    print("抓 KKTIX JSON...")
+    url = "https://kktix.com/events.json"
+    results = []
+
+    try:
+        resp = requests.get(url, headers=HEADERS, timeout=10)
+        data = resp.json()
+
+        for event in data.get("entry", []):
+            results.append({
+                "title": event.get("title", ""),
+                "location": event.get("venue_name", ""),
+                "ticket_date": event.get("start_time", ""),
+                "link": event.get("url", ""),
+                "region": get_region(event.get("title", "") + event.get("venue_name", "")),
+                "source": "KKTIX"
+            })
+
+    except Exception as e:
+        print("KKTIX JSON 失敗:", e)
+
+    return results
+
+
+def fetch_kktix_html():
+    print("抓 KKTIX HTML fallback...")
+    url = "https://kktix.com/events"
+    results = []
+
+    try:
+        resp = requests.get(url, headers=HEADERS, timeout=10)
+        soup = BeautifulSoup(resp.text, "html.parser")
+
+        for card in soup.select(".event-item"):
+            title_el = card.select_one(".event-title")
+            link_el = card.select_one("a")
+
+            results.append({
+                "title": title_el.text.strip() if title_el else "",
+                "location": "",
+                "ticket_date": "",
+                "link": link_el["href"] if link_el else "",
+                "region": "全台",
+                "source": "KKTIX"
+            })
+
+    except Exception as e:
+        print("KKTIX HTML 失敗:", e)
+
+    return results
+
+
+def fetch_kktix():
+    data = fetch_kktix_json()
+
+    if len(data) == 0:
+        print("⚠️ JSON 無資料，啟動 fallback")
+        data = fetch_kktix_html()
+
+    return data
+
+
+# -------------------------
+# Blow（補充來源）
+# -------------------------
+def fetch_blow():
+    print("抓 Blow 音樂...")
     url = "https://blow.streetvoice.com/feed/"
     results = []
+
     try:
-        resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+        resp = requests.get(url, headers=HEADERS, timeout=10)
         root = ET.fromstring(resp.content)
-        
+
         for item in root.findall('.//item'):
             title = item.findtext('title') or ""
-            news_link = item.findtext('link') or ""
-            
-            # 🌟 啟動 X 光機：抓取隱藏在 RSS 裡的「完整文章內文」
-            content_elem = item.find('{http://purl.org/rss/1.0/modules/content/}encoded')
-            content = content_elem.text if content_elem is not None else (item.findtext('description') or "")
-            
-            if any(k in title for k in ['專場', '音樂祭', '開唱', '巡演', '演唱會', '售票', '陣容', 'Live', '發片', '來台']):
-                
-                real_ticket_link = news_link
-                ticket_source = "Blow 吹音樂 (情報)"
-                
-                # 🌟 網址小偷：剖開內文，把真正的售票網址挖出來！
-                if content:
-                    soup = BeautifulSoup(content, "html.parser")
-                    for a_tag in soup.find_all('a'):
-                        href = a_tag.get('href', '')
-                        if 'kktix.com' in href:
-                            real_ticket_link = href
-                            ticket_source = "KKTIX"
-                            break
-                        elif 'indievox.com' in href:
-                            real_ticket_link = href
-                            ticket_source = "iNDIEVOX"
-                            break
-                        elif 'tixcraft.com' in href:
-                            real_ticket_link = href
-                            ticket_source = "拓元售票"
-                            break
-                        elif 'ticketplus.com.tw' in href:
-                            real_ticket_link = href
-                            ticket_source = "遠大售票"
-                            break
-                        elif 'ibon.com.tw' in href:
-                            real_ticket_link = href
-                            ticket_source = "ibon售票"
-                            break
-                            
+            link = item.findtext('link') or ""
+
+            if any(k in title for k in ['專場','音樂祭','演唱會','巡演','開賣']):
+
                 results.append({
                     "title": title,
-                    "location": "詳見售票網頁",
-                    "ticket_date": "點擊前往售票網頁",
-                    "link": real_ticket_link,
-                    # 🌟 地區雷達：把標題跟「完整內文」加起來一起判斷地區！
-                    "region": get_region(title + content),
-                    "source": ticket_source
+                    "location": "詳見連結",
+                    "ticket_date": "",
+                    "link": link,
+                    "region": get_region(title),
+                    "source": "Blow"
                 })
+
     except Exception as e:
-        print(f"Blow 吹音樂 抓取失敗: {e}")
+        print("Blow 失敗:", e)
+
     return results
 
-# 🏛️ 文化部資料保持不變
-def fetch_culture_api():
-    print("正在抓取文化部開放資料...")
+
+# -------------------------
+# 文化部
+# -------------------------
+def fetch_culture():
+    print("抓文化部...")
     url = "https://cloud.culture.tw/frontsite/trans/SearchShowAction.do?method=doFindTypeJ&category=5"
     results = []
+
     try:
-        resp = requests.get(url, timeout=15)
+        resp = requests.get(url, timeout=10)
         data = resp.json()
-        
+
         for item in data[:40]:
-            title = item.get("title", "")
-            show_info = item.get("showInfo", [])
-            if not show_info: continue
-                
-            first_show = show_info[0]
-            location = first_show.get("locationName", "未提供地點")
-            time = first_show.get("time", "請見網頁公告")
-            
-            link = item.get("sourceWebPromote", "")
-            if not link or not link.startswith("http"):
-                link = "https://cloud.culture.tw/"
-                
+            show = item.get("showInfo", [{}])[0]
+
             results.append({
-                "title": title,
-                "location": location,
-                "ticket_date": f"演出時間：{time}",
-                "link": link,
-                "region": get_region(title + location),
-                "source": "政府公開資料"
+                "title": item.get("title", ""),
+                "location": show.get("locationName", ""),
+                "ticket_date": show.get("time", ""),
+                "link": item.get("sourceWebPromote", ""),
+                "region": get_region(item.get("title", "") + show.get("locationName", "")),
+                "source": "文化部"
             })
+
     except Exception as e:
-        print(f"文化部 API 失敗: {e}")
+        print("文化部 失敗:", e)
+
     return results
 
-if __name__ == "__main__":
-    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    all_data = []
-    
-    all_data.extend(fetch_blow_music())
-    all_data.extend(fetch_culture_api())
 
-    for e in all_data:
-        e["last_updated"] = now
-        
+# -------------------------
+# 主流程
+# -------------------------
+def main():
+    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    all_data = []
+
+    # ⭐ 主資料
+    all_data.extend(fetch_kktix())
+
+    # ⭐ 補充資料
+    all_data.extend(fetch_blow())
+    all_data.extend(fetch_culture())
+
+    # -------------------------
+    # 去重
+    # -------------------------
     seen = set()
-    unique_data = []
+    unique = []
+
     for d in all_data:
-        identifier = d['title'] + d['link']
-        if identifier not in seen:
-            unique_data.append(d)
-            seen.add(identifier)
-            
+        key = d["title"] + d["link"]
+
+        if key not in seen:
+            d["last_updated"] = now
+            unique.append(d)
+            seen.add(key)
+
+    # -------------------------
+    # 輸出
+    # -------------------------
     with open("data.json", "w", encoding="utf-8") as f:
-        json.dump(unique_data, f, ensure_ascii=False, indent=4)
-        
-    print(f"任務完成！已成功萃取 {len(unique_data)} 筆精準資料。")
+        json.dump(unique, f, ensure_ascii=False, indent=4)
+
+    print(f"完成 ✅ 共 {len(unique)} 筆資料")
+
+
+if __name__ == "__main__":
+    main()
