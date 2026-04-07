@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>台灣演唱會搶票資訊站</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f4f9; padding: 20px; }
+        .container { max-width: 800px; margin: auto; }
+        .card { background: white; padding: 20px; margin-bottom: 15px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .date { color: #e63946; font-weight: bold; }
+        .btn { display: inline-block; padding: 8px 12px; background: #1d3557; color: white; text-decoration: none; border-radius: 5px; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎸 台灣演唱會與音樂祭搶票資訊站</h1>
+        <p>資料每天早上自動更新！</p>
+        <div id="event-list">資料載入中...</div>
+    </div>
+
+    <script>
+        // 自動去抓取同一個資料夾下的 data.json
+        fetch('data.json')
+            .then(response => response.json())
+            .then(data => {
+                const list = document.getElementById('event-list');
+                list.innerHTML = ''; // 清空載入中文字
+                data.forEach(event => {
+                    const card = `
+                        <div class="card">
+                            <h2>${event.title}</h2>
+                            <p>🎤 演出者：${event.artist}</p>
+                            <p>📅 演出日期：${event.date}</p>
+                            <p class="date">🔥 搶票時間：${event.ticket_date}</p>
+                            <p>ℹ️ 資料來源：${event.source} (最後更新：${event.last_updated})</p>
+                            <a href="${event.link}" target="_blank" class="btn">前往售票網頁</a>
+                        </div>
+                    `;
+                    list.innerHTML += card;
+                });
+            })
+            .catch(error => {
+                document.getElementById('event-list').innerHTML = '<p>目前沒有資料或載入失敗。</p>';
+            });
+    </script>
+</body>
+</html>
