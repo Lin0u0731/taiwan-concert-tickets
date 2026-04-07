@@ -1,11 +1,11 @@
 [
     {
-        "title": "✅ 系統測試成功！這不是假資料！",
-        "location": "GitHub Actions 機房",
-        "ticket_date": "看到這張卡片，代表你的網頁和機器人連線完全正常",
+        "title": "✅ 系統測試成功！資料來源已切換為秘密通道！",
+        "location": "GitHub Actions",
+        "ticket_date": "運作正常",
         "link": "https://github.com",
         "region": "全台/其他",
         "source": "系統提示",
-        "last_updated": "2026-04-07 07:21:50"
+        "last_updated": "2026-04-07 07:32:29"
     }
 ]
