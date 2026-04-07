@@ -195,3 +195,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+print("KKTIX 筆數：", len([d for d in unique if d["source"] == "KKTIX"]))
